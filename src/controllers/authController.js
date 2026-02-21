@@ -55,6 +55,7 @@ const register = async (req, res) => {
                     name,
                     email,
                     role: userRole,
+                    avatar: null,
                 },
             },
         });
@@ -102,7 +103,7 @@ const login = async (req, res) => {
 
         // Generate token
         const token = jwt.sign(
-            { id: user.id, name: user.name, email: user.email, role: user.role },
+            { id: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -117,6 +118,7 @@ const login = async (req, res) => {
                     name: user.name,
                     email: user.email,
                     role: user.role,
+                    avatar: user.avatar,
                 },
             },
         });
@@ -134,7 +136,7 @@ const login = async (req, res) => {
 const getProfile = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, email, role, created_at FROM users WHERE id = $1',
+            'SELECT id, name, email, role, avatar, created_at FROM users WHERE id = $1',
             [req.user.id]
         );
 
