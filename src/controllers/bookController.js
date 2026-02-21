@@ -9,8 +9,19 @@ const getAllBooks = async (req, res) => {
         const search = req.query.search || '';
         const fieldType = req.query.field_type || '';
         const year = req.query.year || '';
+        const sort = req.query.sort || 'newest';
 
         let whereClause = 'WHERE 1=1';
+        let orderByClause = 'ORDER BY id DESC'; // default newest
+
+        if (sort === 'az') {
+            orderByClause = 'ORDER BY title ASC';
+        } else if (sort === 'za') {
+            orderByClause = 'ORDER BY title DESC';
+        } else if (sort === 'newest') {
+            orderByClause = 'ORDER BY year DESC NULLS LAST, id DESC';
+        }
+
         const params = [];
         let paramIndex = 1;
 
@@ -43,7 +54,7 @@ const getAllBooks = async (req, res) => {
 
         // Get paginated data
         const dataResult = await pool.query(
-            `SELECT * FROM books ${whereClause} ORDER BY id DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+            `SELECT * FROM books ${whereClause} ${orderByClause} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
             [...params, limit, offset]
         );
 
