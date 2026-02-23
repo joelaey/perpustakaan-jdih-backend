@@ -6,12 +6,12 @@ const { JWT_SECRET } = require('../middleware/auth');
 // Register
 const register = async (req, res) => {
     try {
-        const { name, email, password, role } = req.body;
+        const { name, email, password, role, phone_number } = req.body;
 
         if (!name || !email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Name, email, and password are required',
+                message: 'Nama, email, dan password wajib diisi',
             });
         }
 
@@ -20,7 +20,7 @@ const register = async (req, res) => {
         if (existing.rows.length > 0) {
             return res.status(409).json({
                 success: false,
-                message: 'Email already registered',
+                message: 'Email sudah terdaftar',
             });
         }
 
@@ -32,8 +32,8 @@ const register = async (req, res) => {
         const userRole = 'pengguna';
 
         const result = await pool.query(
-            'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id',
-            [name, email, hashedPassword, userRole]
+            'INSERT INTO users (name, email, password, role, phone_number) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [name, email, hashedPassword, userRole, phone_number || null]
         );
 
         const newId = result.rows[0].id;
@@ -47,7 +47,7 @@ const register = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: 'Registration successful',
+            message: 'Registrasi berhasil',
             data: {
                 token,
                 user: {
@@ -56,6 +56,7 @@ const register = async (req, res) => {
                     email,
                     role: userRole,
                     avatar: null,
+                    phone_number: phone_number || null
                 },
             },
         });
@@ -63,7 +64,7 @@ const register = async (req, res) => {
         console.error('Register error:', error);
         res.status(500).json({
             success: false,
-            message: 'Registration failed',
+            message: 'Gagal melakukan registrasi, silakan coba lagi',
             error: error.message,
         });
     }
@@ -77,7 +78,7 @@ const login = async (req, res) => {
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Email and password are required',
+                message: 'Email dan password wajib diisi',
             });
         }
 
@@ -86,7 +87,7 @@ const login = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid email or password',
+                message: 'Email tidak terdaftar atau salah',
             });
         }
 
@@ -97,7 +98,7 @@ const login = async (req, res) => {
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
-                message: 'Invalid email or password',
+                message: 'Kata sandi salah',
             });
         }
 
@@ -110,7 +111,7 @@ const login = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Login successful',
+            message: 'Login berhasil',
             data: {
                 token,
                 user: {
@@ -119,6 +120,7 @@ const login = async (req, res) => {
                     email: user.email,
                     role: user.role,
                     avatar: user.avatar,
+                    phone_number: user.phone_number,
                 },
             },
         });
@@ -126,24 +128,24 @@ const login = async (req, res) => {
         console.error('Login error:', error);
         res.status(500).json({
             success: false,
-            message: 'Login failed',
+            message: 'Terjadi kesalahan pada server saat login',
             error: error.message,
         });
     }
-};
+}
 
 // Get current user profile
 const getProfile = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, email, role, avatar, created_at FROM users WHERE id = $1',
+            'SELECT id, name, email, role, avatar, phone_number, created_at FROM users WHERE id = $1',
             [req.user.id]
         );
 
         if (result.rows.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'User not found',
+                message: 'Pengguna tidak ditemukan',
             });
         }
 
@@ -155,7 +157,7 @@ const getProfile = async (req, res) => {
         console.error('Profile error:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to get profile',
+            message: 'Gagal memuat profil pengguna',
             error: error.message,
         });
     }

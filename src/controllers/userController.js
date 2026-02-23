@@ -114,7 +114,7 @@ const deleteUser = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { name, email } = req.body;
+        const { name, email, phone_number } = req.body;
 
         const fields = [];
         const values = [];
@@ -122,6 +122,7 @@ const updateProfile = async (req, res) => {
 
         if (name) { fields.push(`name = $${idx++}`); values.push(name); }
         if (email) { fields.push(`email = $${idx++}`); values.push(email); }
+        if (phone_number !== undefined) { fields.push(`phone_number = $${idx++}`); values.push(phone_number); }
         if (req.body.avatar !== undefined) { fields.push(`avatar = $${idx++}`); values.push(req.body.avatar); }
 
         if (fields.length === 0) {
@@ -132,14 +133,14 @@ const updateProfile = async (req, res) => {
         values.push(userId);
 
         const result = await pool.query(
-            `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, role, avatar`,
+            `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, role, avatar, phone_number`,
             values
         );
 
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
         console.error('Update profile error:', error);
-        res.status(500).json({ success: false, message: 'Failed to update profile' });
+        res.status(500).json({ success: false, message: 'Gagal memperbarui profil pengguna' });
     }
 };
 

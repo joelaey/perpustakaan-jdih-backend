@@ -109,6 +109,37 @@ const getBorrowings = async (req, res) => {
     }
 };
 
+// Get single borrowing by ID
+const getBorrowingById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT b.*, u.name as user_name, u.email as user_email, 
+                    bk.title as book_title, bk.author as book_author, 
+                    bk.cover as book_cover
+             FROM borrowings b
+             JOIN users u ON b.user_id = u.id
+             JOIN books bk ON b.book_id = bk.id
+             WHERE b.id = $1`,
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Borrowing not found' });
+        }
+
+        // Apply access control: user can only view their own
+        if (req.user.role !== 'admin' && result.rows[0].user_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
+        res.json({ success: true, data: result.rows[0] });
+    } catch (error) {
+        console.error('Get borrowing by ID error:', error);
+        res.status(500).json({ success: false, message: 'Gagal mengambil detail peminjaman' });
+    }
+};
+
 // Update borrowing status (admin only)
 const updateBorrowingStatus = async (req, res) => {
     try {
@@ -131,10 +162,14 @@ const updateBorrowingStatus = async (req, res) => {
 
         if (status === 'approved') {
             updates.push(`approved_date = CURRENT_TIMESTAMP`);
-            // Set due date to 14 days from now
-            updates.push(`due_date = CURRENT_TIMESTAMP + INTERVAL '14 days'`);
         } else if (status === 'borrowed') {
             updates.push(`borrow_date = CURRENT_TIMESTAMP`);
+            if (req.body.due_date) {
+                updates.push(`due_date = $${idx++}`);
+                values.push(req.body.due_date);
+            } else {
+                updates.push(`due_date = CURRENT_TIMESTAMP + INTERVAL '14 days'`);
+            }
         } else if (status === 'returned') {
             updates.push(`return_date = CURRENT_TIMESTAMP`);
         }
@@ -198,4 +233,38 @@ const cancelBorrowing = async (req, res) => {
     }
 };
 
-module.exports = { requestBorrow, getBorrowings, updateBorrowingStatus, getBorrowingStats, cancelBorrowing };
+// Upload proof (pickup or return)
+const uploadProof = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { type, proofData } = req.body; // type: 'pickup' or 'return'
+        const userId = req.user.id;
+        const isAdmin = req.user.role === 'admin';
+
+        if (!['pickup', 'return'].includes(type) || !proofData) {
+            return res.status(400).json({ success: false, message: 'Invalid proof type or missing data' });
+        }
+
+        // Verify ownership if not admin
+        const check = await pool.query('SELECT user_id, status FROM borrowings WHERE id = $1', [id]);
+        if (check.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Peminjaman tidak ditemukan' });
+        }
+        if (!isAdmin && check.rows[0].user_id !== userId) {
+            return res.status(403).json({ success: false, message: 'Forbidden' });
+        }
+
+        const column = type === 'pickup' ? 'pickup_proof' : 'return_proof';
+        const result = await pool.query(
+            `UPDATE borrowings SET ${column} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+            [proofData, id]
+        );
+
+        res.json({ success: true, message: 'Bukti foto berhasil diunggah', data: result.rows[0] });
+    } catch (error) {
+        console.error('Upload proof error:', error);
+        res.status(500).json({ success: false, message: 'Gagal mengunggah bukti' });
+    }
+};
+
+module.exports = { requestBorrow, getBorrowings, getBorrowingById, updateBorrowingStatus, getBorrowingStats, cancelBorrowing, uploadProof };
