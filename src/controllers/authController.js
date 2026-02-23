@@ -40,7 +40,7 @@ const register = async (req, res) => {
 
         // Generate token
         const token = jwt.sign(
-            { id: newId, name, email, role: userRole },
+            { id: newId },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
