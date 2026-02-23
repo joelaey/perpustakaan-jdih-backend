@@ -12,6 +12,16 @@ const { testConnection } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// CORS configuration
+const corsOptions = {
+    origin: process.env.FRONTEND_URL, // must match Vercel domain exactly
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // handle preflight
 // Middleware
 // Allow requests from Vercel frontend or localhost
 app.use(cors({
