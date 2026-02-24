@@ -43,9 +43,9 @@ const register = async (req, res) => {
 
         const newId = result.rows[0].id;
 
-        // Generate token
+        // Generate token hanya dengan uid agar data profil (nama, email) yang diubah tetap valid
         const token = jwt.sign(
-            { id: newId },
+            { uid: newId },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -107,9 +107,9 @@ const login = async (req, res) => {
             });
         }
 
-        // Generate token
+        // Generate token hanya dengan uid agar data profil yang diubah tetap valid
         const token = jwt.sign(
-            { id: user.id },
+            { uid: user.id },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
