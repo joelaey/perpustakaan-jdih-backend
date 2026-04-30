@@ -5,7 +5,7 @@ const { pool } = require('../config/database');
 const getAllUsers = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, email, role, avatar, created_at FROM users ORDER BY created_at DESC'
+            'SELECT u.id, u.name, u.email, u.role, u.avatar, u.created_at, u.library_id, l.name as library_name FROM users u LEFT JOIN libraries l ON u.library_id = l.id ORDER BY u.created_at DESC'
         );
         res.json({ success: true, data: result.rows });
     } catch (error) {
@@ -17,7 +17,7 @@ const getAllUsers = async (req, res) => {
 // CREATE user (admin only)
 const createUser = async (req, res) => {
     try {
-        const { name, email, password, role } = req.body;
+        const { name, email, password, role, library_id } = req.body;
         if (!name || !email || !password) {
             return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
         }
@@ -32,8 +32,8 @@ const createUser = async (req, res) => {
         const userRole = ['admin', 'pengguna'].includes(role) ? role : 'pengguna';
 
         const result = await pool.query(
-            'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role, avatar, created_at',
-            [name, email, hashedPassword, userRole]
+            'INSERT INTO users (name, email, password, role, library_id) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, role, avatar, created_at, library_id',
+            [name, email, hashedPassword, userRole, library_id || null]
         );
 
         res.status(201).json({ success: true, data: result.rows[0] });
@@ -47,7 +47,7 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, role, password } = req.body;
+        const { name, email, role, password, library_id } = req.body;
 
         // Build dynamic update
         const fields = [];
@@ -57,6 +57,7 @@ const updateUser = async (req, res) => {
         if (name) { fields.push(`name = $${idx++}`); values.push(name); }
         if (email) { fields.push(`email = $${idx++}`); values.push(email); }
         if (role && ['admin', 'pengguna'].includes(role)) { fields.push(`role = $${idx++}`); values.push(role); }
+        if (library_id !== undefined) { fields.push(`library_id = $${idx++}`); values.push(library_id || null); }
         if (req.body.avatar !== undefined) { fields.push(`avatar = $${idx++}`); values.push(req.body.avatar); }
         if (password) {
             const salt = await bcrypt.genSalt(10);
@@ -73,7 +74,7 @@ const updateUser = async (req, res) => {
         values.push(id);
 
         const result = await pool.query(
-            `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, role, avatar, created_at`,
+            `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, name, email, role, avatar, created_at, library_id`,
             values
         );
 
@@ -98,13 +99,26 @@ const deleteUser = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
         }
 
+        await pool.query('BEGIN');
+
+        // Delete associated messages
+        await pool.query('DELETE FROM messages WHERE sender_id = $1 OR receiver_id = $1', [id]);
+
+        // Delete associated borrowings
+        await pool.query('DELETE FROM borrowings WHERE user_id = $1', [id]);
+
+        // Delete the user
         const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+
         if (result.rows.length === 0) {
+            await pool.query('ROLLBACK');
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        res.json({ success: true, message: 'User deleted successfully' });
+        await pool.query('COMMIT');
+        res.json({ success: true, message: 'User and all related data deleted successfully' });
     } catch (error) {
+        await pool.query('ROLLBACK');
         console.error('Delete user error:', error);
         res.status(500).json({ success: false, message: 'Failed to delete user' });
     }

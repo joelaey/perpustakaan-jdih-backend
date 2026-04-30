@@ -11,9 +11,9 @@ router.put('/profile', userController.updateProfile);
 router.put('/change-password', userController.changePassword);
 
 // Admin-only user management routes
-router.get('/', authorizeRole('admin'), userController.getAllUsers);
-router.post('/', authorizeRole('admin'), userController.createUser);
-router.put('/:id', authorizeRole('admin'), userController.updateUser);
-router.delete('/:id', authorizeRole('admin'), userController.deleteUser);
+router.get('/', authorizeRole('admin', 'super_admin'), userController.getAllUsers);
+router.post('/', authorizeRole('admin', 'super_admin'), userController.createUser);
+router.put('/:id', authorizeRole('admin', 'super_admin'), userController.updateUser);
+router.delete('/:id', authorizeRole('admin', 'super_admin'), userController.deleteUser);
 
 module.exports = router;

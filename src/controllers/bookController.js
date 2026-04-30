@@ -9,6 +9,7 @@ const getAllBooks = async (req, res) => {
         const search = req.query.search || '';
         const fieldType = req.query.field_type || '';
         const year = req.query.year || '';
+        const libraryId = req.query.library_id || '';
         const sort = req.query.sort || 'newest';
 
         let whereClause = 'WHERE 1=1';
@@ -44,17 +45,56 @@ const getAllBooks = async (req, res) => {
             paramIndex++;
         }
 
+        if (libraryId) {
+            whereClause += ` AND library_id = $${paramIndex}`;
+            params.push(parseInt(libraryId));
+            paramIndex++;
+        }
+
+        // Determine base query to aggregate stock
+        // If libraryId is set, we filter books that have copies in that library
+        let queryBase = `
+            SELECT b.*, COALESCE(SUM(bc.stock_available), 0) as total_stock
+            FROM books b
+            LEFT JOIN book_copies bc ON b.id = bc.book_id
+        `;
+
+        // If libraryId is provided, we still left join all copies, but we only want books that are available in that specific library.
+        // Or simpler: filter books based on book_copies library_id
+        if (libraryId) {
+            queryBase = `
+                SELECT b.*, COALESCE(bc_lib.stock_available, 0) as total_stock
+                FROM books b
+                INNER JOIN book_copies bc_lib ON b.id = bc_lib.book_id AND bc_lib.library_id = $${paramIndex - 1}
+            `;
+        } else {
+            queryBase += ` ${whereClause.replace('WHERE 1=1 AND', 'WHERE')}
+                            GROUP BY b.id `;
+        }
+
+        if (libraryId) {
+            queryBase += ` ${whereClause.replace(`AND library_id = $${paramIndex - 1}`, '').replace('WHERE 1=1 AND', 'WHERE')} `;
+        }
+
+        let countQuery = '';
+        if (libraryId) {
+            countQuery = `
+                SELECT COUNT(DISTINCT b.id) as total FROM books b
+                INNER JOIN book_copies bc_lib ON b.id = bc_lib.book_id AND bc_lib.library_id = $${paramIndex - 1}
+                ${whereClause.replace(`AND library_id = $${paramIndex - 1}`, '').replace('WHERE 1=1 AND', 'WHERE 1=1 AND ')}
+            `;
+        } else {
+            countQuery = `SELECT COUNT(*) as total FROM books ${whereClause.replace('WHERE 1=1 AND', 'WHERE')}`;
+        }
+
         // Get total count
-        const countResult = await pool.query(
-            `SELECT COUNT(*) as total FROM books ${whereClause}`,
-            params
-        );
+        const countResult = await pool.query(countQuery, params.slice(0, libraryId ? paramIndex - 1 : paramIndex));
         const total = parseInt(countResult.rows[0].total);
         const totalPages = Math.ceil(total / limit);
 
         // Get paginated data
         const dataResult = await pool.query(
-            `SELECT * FROM books ${whereClause} ${orderByClause} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+            `${queryBase} ${orderByClause} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
             [...params, limit, offset]
         );
 
@@ -94,9 +134,24 @@ const getBookById = async (req, res) => {
             });
         }
 
+        const book = result.rows[0];
+
+        // Fetch available copies
+        const copiesResult = await pool.query(`
+            SELECT bc.id as copy_id, bc.stock_available, l.id as library_id, l.name as library_name, l.address as library_address
+            FROM book_copies bc
+            JOIN libraries l ON bc.library_id = l.id
+            WHERE bc.book_id = $1
+        `, [id]);
+
+        book.copies = copiesResult.rows;
+
+        // Calculate total global stock
+        book.total_stock = copiesResult.rows.reduce((sum, copy) => sum + parseInt(copy.stock_available), 0);
+
         res.json({
             success: true,
-            data: result.rows[0],
+            data: book,
             message: 'Book fetched successfully',
         });
     } catch (error) {
@@ -109,13 +164,13 @@ const getBookById = async (req, res) => {
     }
 };
 
-// Create a new book
+// Create a new master book
 const createBook = async (req, res) => {
     try {
         const {
             title, author, publisher, publish_place, year, isbn,
             subject, field_type, physical_description, language, location,
-            file_url, cover
+            file_url, cover, library_id: targetLibraryId, library_ids, initial_stock
         } = req.body;
 
         const result = await pool.query(
@@ -128,9 +183,36 @@ const createBook = async (req, res) => {
                 field_type, physical_description, language || 'Indonesia', location, file_url, cover]
         );
 
+        const newBook = result.rows[0];
+
+        // Auto-create book_copy for the admin's library
+        const userRole = req.user.role;
+        const userLibraryId = req.user.library_id;
+        const stock = parseInt(initial_stock) || 1;
+
+        if (userRole === 'admin' && userLibraryId) {
+            // Admin perpustakaan: auto-assign to their own library
+            await pool.query(
+                'INSERT INTO book_copies (book_id, library_id, stock_available) VALUES ($1, $2, $3) ON CONFLICT (book_id, library_id) DO UPDATE SET stock_available = EXCLUDED.stock_available',
+                [newBook.id, userLibraryId, stock]
+            );
+        } else if (userRole === 'super_admin') {
+            // Super admin: assign to specified libraries (array) or a single library
+            const targetIds = Array.isArray(library_ids) && library_ids.length > 0
+                ? library_ids
+                : (targetLibraryId ? [targetLibraryId] : []);
+
+            for (const libId of targetIds) {
+                await pool.query(
+                    'INSERT INTO book_copies (book_id, library_id, stock_available) VALUES ($1, $2, $3) ON CONFLICT (book_id, library_id) DO UPDATE SET stock_available = EXCLUDED.stock_available',
+                    [newBook.id, parseInt(libId), stock]
+                );
+            }
+        }
+
         res.status(201).json({
             success: true,
-            data: result.rows[0],
+            data: newBook,
             message: 'Book created successfully',
         });
     } catch (error) {
@@ -143,7 +225,7 @@ const createBook = async (req, res) => {
     }
 };
 
-// Update a book
+// Update a master book
 const updateBook = async (req, res) => {
     try {
         const { id } = req.params;
@@ -163,13 +245,6 @@ const updateBook = async (req, res) => {
             [title, author, publisher, publish_place, year, isbn, subject,
                 field_type, physical_description, language, location, file_url, cover, id]
         );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Book not found',
-            });
-        }
 
         res.json({
             success: true,
@@ -236,10 +311,24 @@ const getFieldTypes = async (req, res) => {
 // Get stats for dashboard
 const getStats = async (req, res) => {
     try {
-        const totalBooks = await pool.query('SELECT COUNT(*) as count FROM books');
-        const totalUsers = await pool.query('SELECT COUNT(*) as count FROM users');
-        const fieldTypes = await pool.query('SELECT COUNT(DISTINCT field_type) as count FROM books');
-        const years = await pool.query('SELECT MIN(year) as min_year, MAX(year) as max_year FROM books WHERE year IS NOT NULL');
+        const libraryId = req.query.library_id || (req.user && req.user.role === 'admin' ? req.user.library_id : null);
+
+        let whereClauseBook = '';
+        let whereClauseUser = '';
+        let param = [];
+
+        // If an admin requests stats, optionally filter by their library
+        if (libraryId) {
+            whereClauseBook = 'INNER JOIN book_copies bc ON bc.book_id = books.id AND bc.library_id = $1';
+            // users table also needs filtering by library_id
+            whereClauseUser = 'WHERE library_id = $1 OR role = \'super_admin\'';
+            param.push(libraryId);
+        }
+
+        const totalBooks = await pool.query(`SELECT COUNT(DISTINCT books.id) as count FROM books ${whereClauseBook}`, param);
+        const totalUsers = await pool.query(`SELECT COUNT(*) as count FROM users ${whereClauseUser}`, param);
+        const fieldTypes = await pool.query(`SELECT COUNT(DISTINCT field_type) as count FROM books ${whereClauseBook}`, param);
+        const years = await pool.query(`SELECT MIN(year) as min_year, MAX(year) as max_year FROM books ${whereClauseBook} WHERE year IS NOT NULL`, param);
 
         res.json({
             success: true,
@@ -317,13 +406,28 @@ const getRecommendations = async (req, res) => {
             return { ...book, score };
         });
 
-        // Sort by score descending, take top 8
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 8;
+        const offset = (page - 1) * limit;
+
+        // Sort by score descending
         scored.sort((a, b) => b.score - a.score);
-        const recommendations = scored.filter(b => b.score > 0).slice(0, 8);
+
+        // Filter out books with 0 score, then apply pagination
+        const validRecommendations = scored.filter(b => b.score > 0);
+        const total = validRecommendations.length;
+        const recommendations = validRecommendations.slice(offset, offset + limit);
 
         res.json({
             success: true,
             data: recommendations,
+            meta: {
+                current_page: page,
+                per_page: limit,
+                total: total,
+                last_page: Math.ceil(total / limit),
+                has_more: offset + limit < total
+            },
             message: 'Recommendations fetched successfully',
         });
     } catch (error) {
@@ -336,6 +440,37 @@ const getRecommendations = async (req, res) => {
     }
 };
 
+// Add or Update stock for a specific library copy
+const updateBookCopy = async (req, res) => {
+    try {
+        const { book_id } = req.params;
+        const { stock_available, library_id } = req.body;
+
+        const targetLibraryId = req.user.role === 'admin' ? req.user.library_id : library_id;
+
+        if (!targetLibraryId) {
+            return res.status(400).json({ success: false, message: 'library_id is required' });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO book_copies (book_id, library_id, stock_available)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (book_id, library_id)
+            DO UPDATE SET stock_available = EXCLUDED.stock_available, updated_at = CURRENT_TIMESTAMP
+            RETURNING *
+        `, [book_id, targetLibraryId, stock_available]);
+
+        res.json({
+            success: true,
+            data: result.rows[0],
+            message: 'Book copy stock updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating book copy:', error);
+        res.status(500).json({ success: false, message: 'Failed to update book copy stock' });
+    }
+};
+
 module.exports = {
     getAllBooks,
     getBookById,
@@ -345,4 +480,5 @@ module.exports = {
     getFieldTypes,
     getStats,
     getRecommendations,
+    updateBookCopy
 };

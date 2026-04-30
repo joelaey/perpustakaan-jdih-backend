@@ -7,6 +7,7 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const borrowingRoutes = require('./routes/borrowingRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const libraryRoutes = require('./routes/libraryRoutes');
 const { testConnection } = require('./config/database');
 
 const app = express();
@@ -23,12 +24,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // handle preflight
 // Middleware
-// Allow requests from Vercel frontend or localhost
-app.use(cors({
-    origin: process.env.FRONTEND_URL || '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -38,6 +33,7 @@ app.use('/api/books', bookRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/borrowings', borrowingRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/libraries', libraryRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

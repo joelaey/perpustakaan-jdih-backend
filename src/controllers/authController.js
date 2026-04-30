@@ -61,7 +61,8 @@ const register = async (req, res) => {
                     email,
                     role: userRole,
                     avatar: null,
-                    phone_number: phone_number || null
+                    phone_number: phone_number || null,
+                    library_id: null
                 },
             },
         });
@@ -78,21 +79,28 @@ const register = async (req, res) => {
 // Login
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const identifier = req.body.identifier || req.body.email;
+        const password = req.body.password;
 
-        if (!email || !password) {
+        if (!identifier || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Email dan password wajib diisi',
+                message: 'Email atau Nomor Telepon dan password wajib diisi',
             });
         }
 
-        // Find user
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        // Find user by email or phone_number
+        const result = await pool.query(
+            `SELECT u.*, l.name as library_name 
+             FROM users u 
+             LEFT JOIN libraries l ON u.library_id = l.id 
+             WHERE u.email = $1 OR u.phone_number = $1`,
+            [identifier]
+        );
         if (result.rows.length === 0) {
             return res.status(401).json({
                 success: false,
-                message: 'Email tidak terdaftar atau salah',
+                message: 'Email / Nomor Telepon tidak terdaftar atau salah',
             });
         }
 
@@ -126,6 +134,8 @@ const login = async (req, res) => {
                     role: user.role,
                     avatar: user.avatar,
                     phone_number: user.phone_number,
+                    library_id: user.library_id,
+                    library_name: user.library_name || null
                 },
             },
         });
@@ -143,7 +153,7 @@ const login = async (req, res) => {
 const getProfile = async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, name, email, role, avatar, phone_number, created_at FROM users WHERE id = $1',
+            'SELECT id, name, email, role, avatar, phone_number, library_id, created_at FROM users WHERE id = $1',
             [req.user.id]
         );
 

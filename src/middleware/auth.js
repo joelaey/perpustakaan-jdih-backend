@@ -36,9 +36,9 @@ const authenticateToken = async (req, res, next) => {
             });
         }
 
-        // Ambil user terbaru dari database untuk memastikan role dan status up-to-date
+        // Ambil user terbaru dari database untuk memastikan role, status, dan library_id up-to-date
         const result = await pool.query(
-            'SELECT id, role FROM users WHERE id = $1',
+            'SELECT id, role, library_id FROM users WHERE id = $1',
             [uid]
         );
 
@@ -52,7 +52,8 @@ const authenticateToken = async (req, res, next) => {
         // Attach fresh user data ke request
         req.user = {
             id: result.rows[0].id,
-            role: result.rows[0].role
+            role: result.rows[0].role,
+            library_id: result.rows[0].library_id
         };
 
         next();

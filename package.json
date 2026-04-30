@@ -5,7 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "dev": "nodemon --ext js,mjs,cjs,json,env src/app.js",
     "migrate": "node src/scripts/migrate.js",
     "scrape": "node src/scripts/scrape-jdih.js"
   },

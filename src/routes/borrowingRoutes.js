@@ -8,7 +8,7 @@ router.use(authenticateToken);
 // User & Admin routes
 router.post('/', borrowingController.requestBorrow);
 router.get('/', borrowingController.getBorrowings);
-router.get('/stats', authorizeRole('admin'), borrowingController.getBorrowingStats);
+router.get('/stats', authorizeRole('admin', 'super_admin'), borrowingController.getBorrowingStats);
 router.get('/:id', borrowingController.getBorrowingById);
 router.delete('/:id', borrowingController.cancelBorrowing);
 
@@ -16,6 +16,6 @@ router.delete('/:id', borrowingController.cancelBorrowing);
 router.post('/:id/proof', borrowingController.uploadProof);
 
 // Admin routes
-router.put('/:id/status', authorizeRole('admin'), borrowingController.updateBorrowingStatus);
+router.put('/:id/status', authorizeRole('admin', 'super_admin'), borrowingController.updateBorrowingStatus);
 
 module.exports = router;
