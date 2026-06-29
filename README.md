@@ -14,6 +14,18 @@ Sebelum menjalankan aplikasi, pastikan Anda telah menginstal software berikut di
 *   **npm** (Bawaan dari instalasi Node.js)
 *   **PostgreSQL** (Versi 14 atau lebih baru, atau menggunakan PostgreSQL cloud seperti Supabase)
 
+### ⚙️ Spesifikasi Versi Tools (DevOps Reference)
+
+| Tool / Library | Kategori | Versi Teruji / Direkomendasikan | Catatan |
+| :--- | :--- | :--- | :--- |
+| **Node.js** | Runtime | `v20.x` / `v22.x` (LTS) atau `v25.1.0` | Diuji pada Node.js `v25.1.0` |
+| **npm** | Package Manager | `v10.x` atau `11.6.2` | Bawaan Node.js |
+| **PostgreSQL** | Database | `v14.x` s/d `v16.x` | Support Supabase PostgreSQL |
+| **Express** | Web Framework | `^4.21.2` | Library utama server backend |
+| **pg (node-postgres)** | DB Client | `^8.18.0` | Driver database PostgreSQL |
+| **bcryptjs** | Security | `^3.0.3` | Hashing password user/admin |
+| **jsonwebtoken** | Security | `^9.0.3` | Token-based Authentication |
+
 ---
 
 ## 🚀 Langkah-langkah Menjalankan Sistem
